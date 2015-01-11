@@ -293,7 +293,7 @@ class Display:
                 if char == chr(0):
                     char = " "
                 else:
-                    char = char
+                    char = "@"
                 try:
                     self.screen.addch(row, col, char)
 
