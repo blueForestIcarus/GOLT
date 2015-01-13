@@ -88,15 +88,10 @@ def init():
     cols, rows = display.setup()
     cols *= 4
     rows *= 2
-
-    display.inputText(INITIAL_TEXT)
     
     sim = Simulator(cols,rows)    
-    sim.thisGen = display.getBoolArray(display.text)
-    
-    sim.glider(60,70)
-    display.insertChar(10,5,chr(2))
-    display.insertChar(10,6,chr(23))
+
+    rice()
 
     display.refresh()
      
@@ -115,8 +110,18 @@ def start():
 
 def stop():
     curses.endwin()
+    
+def rice():
+    global sim, display
 
+    display.inputText(INITIAL_TEXT)
+    display.insertChar(10,5,chr(2))
+    display.insertChar(10,6,chr(23))
 
+    sim.thisGen = display.getBoolArray(display.text)
+    sim.glider(60,70)
+    display.update(sim.getArray())
+    
 class Simulator:
     rows = None
     cols = None
@@ -172,6 +177,8 @@ class Simulator:
         return self.thisGen[:]
 
     def setCell(self,x,y,bool):
+        x%=self.cols
+        y%=self.rows
         self.thisGen[x][y] = bool
 
     def glider(self,x,y):
@@ -304,6 +311,8 @@ class Display:
         self.screen.refresh()
         
     def insertChar(self, col, row, char):
+        col%=self.cols
+        row%=self.rows
         self.text[col][row] = char
     
     def getSimGrid(self):
