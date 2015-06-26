@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 
 from os import system
-import curses
+import termbox
 import random
 import time
 import os
@@ -70,7 +70,7 @@ class Simulator:
 class Simulator:      
 """
 #---------------------------------------------------------------------------
-DELAY =0 
+DELAY = 0 
 
 running = True
 paused = False
@@ -80,32 +80,35 @@ ENDIAN='little'#this does nothing
 
 sim = None
 display = None
+array = None
 
 def init():
-    global sim, display
-
+    global sim, display,array
+    
     display = Display()
-    cols, rows = display.setup()
-    cols *= 4
-    rows *= 2
+    cols, rows, array= display.setup()
+    cols *= 2
+    rows *= 4
     
     sim = Simulator(cols,rows)    
 
     rice()
 
-    display.refresh()
-     
 def start():
     global sim, display, running, paused, wait, DELAY
 
     while running:
         if not paused and not wait:
             sim.step()
-            display.update(sim.getArray())
-            display.refresh()
-            pass
+            display.refresh(sim.getArray())
 
-        time.sleep(DELAY)
+        event = display.box.peek_event(timeout=30)
+        if event:
+            (typee, char, key, mod, width, height, mousex, mousey) = event
+            if typee == termbox.EVENT_KEY and key == termbox.KEY_ESC:
+                display.box.close()
+                exit()
+        #time.sleep(DELAY)
     pass
 
 def stop():
@@ -114,13 +117,13 @@ def stop():
 def rice():
     global sim, display
 
-    display.inputText(INITIAL_TEXT)
-    display.insertChar(10,5,chr(2))
-    display.insertChar(10,6,chr(23))
+    display.inputText(INITIAL_TEXT, array)
+    display.insertChar(10,5,2,array)
+    display.insertChar(10,6,23,array)
 
-    sim.thisGen = display.getBoolArray(display.text)
+    sim.thisGen = display.getBoolArray(array)
     sim.glider(60,70)
-    display.update(sim.getArray())
+    display.refresh(sim.getArray())
     
 class Simulator:
     rows = None
@@ -190,74 +193,51 @@ class Simulator:
 
 
 class Display:  
-    screen = None
-    text = None
+    box = None
     rows = 0
     cols = 0
     #modified=False
     #needsRefresh=False
     
     def __init__(self):
-        self.screen = curses.initscr()
+        self.box = termbox.Termbox()
+        self.box.clear()
+        self.box.present()
         pass
-
-    #array is an aray of booleans from simulator
-    def getCharArray(self, array):
-        text=[]
-        if(len(array)%4 == 0 and len(array[0])%2 == 0):
-            cols = int(len(array)/4)
-            rows = int(len(array[0])/2)
-            for col in range(cols):
-                textCol = []
-                for row in range(rows):
-                    binary = []
-                    for y in range(2):
-                        for x in range(4):
-                            binary += [array[col*4 + x][row*2 + y]]
-                    textCol += [self.getChar(binary)]
-                text += [textCol]
-        else:
-            #invalid simulator board
-            text += [-1]
-        
-        return text
-        
-    def getText(self, array):
+                
+    def getText(self):
         text = ""
         for row in range(self.rows):
             for col in range(self.cols):
                 text += self.text[col][row]
+        return text
             
-    def inputText(self, text):
+    def inputText(self, text, array):
         for row in range(self.rows):
             for col in range(self.cols):
                 try:
-                    self.text[col][row]= text[col+(row*self.cols)]
+                    array[col][row]=ord(text[col+(row*self.cols)])
                 except:
-                    self.text[col][row]=chr(0)
-    
-    def getChar(self, array):
-        if len(array) is not 8:          
-            #problem
-            return None            
-
-        charCode = 0
-        for bit in array:
-            charCode *= 2
-            charCode += 1 if bit else 0
-
-        return chr(charCode)
+                    array[col][row]=0
+        return array
 
     def getBinaryChar(self, char):
-        charCode = ord(char)  
+        charCode = char 
         binary = []
-        while charCode != 0:
-            bit = charCode % 2 == 1
-            binary.insert(0, bit)
-            charCode = math.floor(charCode / 2)
 
-        while len(binary)<8:
-            binary.insert(0, False)
+        try:
+            while charCode != 0:
+                bit = charCode % 2 == 1
+                binary.insert(0, bit)
+                charCode = math.floor(charCode / 2)
+
+            while len(binary)<8:
+                binary.insert(0, False)
+        except:
+            self.box.close()
+            print(charCode.__class__)
+            print(char)
+            raise
 
         return binary
 
@@ -265,55 +245,63 @@ class Display:
     def getBoolArray(self, array):
         cols = len(array)
         rows = len(array[0])
-        boolArray = Simulator.initGrid(None, cols*4,rows*2)
+        boolArray = Simulator.initGrid(None, cols*2,rows*4)
         
         for col in range(cols):
             for row in range(rows):
                 binary = self.getBinaryChar(array[col][row])
-                for x in range(4):
-                     for y in range(2):
-                          boolArray[col*4 + x][row*2 + y] = binary[x + 4*y]
+                for x in range(2):
+                     for y in range(4):
+                          boolArray[col*2 + x][row*4 + y] = binary[x*2 + y]
                             
         return boolArray
 
     def setup(self):
-        os.system('clear')
-        self.cols = self.screen.getmaxyx()[1]-1
-        self.rows = self.screen.getmaxyx()[0]
+        self.cols =  self.box.width()
+        self.rows =  self.box.height()
         array=[]
         for col in range(self.cols):
             arrayCol = []
             for row in range(self.rows):
-                arrayCol += [chr(0)]
+                arrayCol += [0]
             array += [arrayCol]
 
-        self.text = array
-        return self.cols , self.rows
+        return self.cols , self.rows, array
         
-    def update(self, array):
-        self.text = self.getCharArray(array)
-        
-    def refresh(self):
+    def refresh(self, array):
+        self.box.clear()
+
         for col in range(self.cols):
             for row in range(self.rows):
-                char = self.text[col][row]
-                if char == chr(0):
-                    char = " "
+                
+                char = 0
+                for x in range(2):
+                    for y in range(4):
+                        char *= 2
+                        char += 1 if array[col*2 + x][row*4 + y] else 0
+                
+                fg = termbox.BLACK
+                if char == 0:
+                    char = ord(" ")
+                    bg = termbox.BLACK
+                elif char < 32 or char == 127:
+                    char = ord(" ")
+                    bg = termbox.WHITE
                 else:
                     char = char
-                try:
-                    self.screen.addch(row, col, char)
+                    bg = termbox.WHITE
+                
+                self.box.change_cell(col, row, char, fg, bg)
 
-                except:
-                    pass
 
         #print(self.text)
-        self.screen.refresh()
+        self.box.present()
         
-    def insertChar(self, col, row, char):
+    def insertChar(self, col, row, char, array):
         col%=self.cols
         row%=self.rows
-        self.text[col][row] = char
+        array[col][row] = char
+        return array
     
     def getSimGrid(self):
         return self.getBoolArray(self.text)
